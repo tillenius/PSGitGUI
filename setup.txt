@@ -1,0 +1,6 @@
+Set-PSReadlineKeyHandler -Key F1 -ScriptBlock {
+    $x = PSGitGUI.exe (pwd)
+    if ($x) {
+        [Microsoft.PowerShell.PSConsoleReadLine]::Insert($x)
+    }
+}
