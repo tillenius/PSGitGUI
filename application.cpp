@@ -457,9 +457,41 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			case 'F': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					SendToTerminal(L"git fetch origin " + branch + L":" + branch + L"\n");
-					DestroyWindow(hwnd);
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring branch = m_items[currentItem].text.substr(2);
+						SendToTerminal(L"git fetch origin " + branch + L":" + branch);
+						DestroyWindow(hwnd);
+					}
+				}
+				break;
+			}
+			case 'L': {
+				if (ctrl) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring branch = m_items[currentItem].text.substr(2);
+						SendToTerminal(L"git log " + branch);
+						DestroyWindow(hwnd);
+					}
+				}
+				break;
+			}
+			case 'O': {
+				if (ctrl) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring branch = m_items[currentItem].text.substr(2);
+						SendToTerminal(L"git switch " + branch);
+						DestroyWindow(hwnd);
+					}
+				}
+				break;
+			}
+			case 'X': {
+				if (ctrl) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring branch = m_items[currentItem].text.substr(2);
+						SendToTerminal(L"git branch -D " + branch);
+						DestroyWindow(hwnd);
+					}
 				}
 				break;
 			}
@@ -581,7 +613,7 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 					graphics.DrawString(L"   F3 Diff [H]   F4 Sublime   F5 Add   F7 Restore   Ctrl+C Copy   Ctrl+R Refresh   Ctrl+O Open   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
 				}
 			} else {
-				graphics.DrawString(L"   Ctrl+F Fetch", -1, nmfont.get(), point, &fg);
+				graphics.DrawString(L"   Ctrl+F Fetch   Ctrl+L Log   Ctrl+O Switch   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
 			}
 		}
 	}
