@@ -4,7 +4,8 @@
 
 std::wstring VisualStudioInterop::envdte = L"VisualStudio.DTE";
 
-static bool InvokeMethod(CComPtr<IDispatch> & pDisp, const wchar_t * name, const char * argument) {
+template< typename char_t >
+static bool InvokeMethod(CComPtr<IDispatch> & pDisp, const wchar_t * name, const char_t * argument) {
     DISPID dispid;
     CComBSTR str(name);
     if (FAILED(pDisp->GetIDsOfNames(IID_NULL, &str, 1, LOCALE_USER_DEFAULT, &dispid)))
@@ -74,6 +75,25 @@ static std::wstring PropertyGetBStr(CComPtr<IDispatch> & pDisp, const wchar_t * 
     if (FAILED(pDisp->Invoke(dispid, IID_NULL, LOCALE_SYSTEM_DEFAULT, DISPATCH_PROPERTYGET, &args, &variant_result, &exceptInfo, NULL)))
         return std::wstring();
     return std::wstring(variant_result.bstrVal, SysStringLen(variant_result.bstrVal));
+}
+
+bool VisualStudioInterop::OpenInVS(const std::wstring & filename) {
+    CLSID clsid;
+    if (FAILED(::CLSIDFromProgID(envdte.c_str(), &clsid)))
+        return false;
+
+    CComPtr<IUnknown> punk;
+    if (FAILED(::GetActiveObject(clsid, NULL, &punk)))
+        return false;
+
+    CComPtr<IDispatch> pDisp;
+    if (FAILED(punk->QueryInterface(IID_PPV_ARGS(&pDisp))))
+        return false;
+
+    if (!InvokeMethod(pDisp, L"ExecuteCommand", (std::wstring(L"File.OpenFile ") + filename).c_str()))
+        return false;
+
+    return true;
 }
 
 bool VisualStudioInterop::OpenInVS(const std::string & filename, int line) {

@@ -1,5 +1,6 @@
 #include "application.h"
 #include "runscript.h"
+#include "visualstudio.h"
 
 #include "Shlobj.h"
 #include <iostream>
@@ -22,8 +23,8 @@ static void split(const std::wstring & str, std::vector<std::wstring> & split) {
 		split.push_back(last);
 	}
 }
- 
-std::wstring utf8_to_wstr(const std::string & str) {
+
+static std::wstring utf8_to_wstr(const std::string & str) {
 	size_t charsNeeded = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
 	if (charsNeeded == 0)
 		return std::wstring();
@@ -34,6 +35,30 @@ std::wstring utf8_to_wstr(const std::string & str) {
 		return std::wstring();
 
 	return std::wstring(&buffer[0], charsConverted);
+}
+
+static bool setClipboard(std::wstring text) {
+	if (::OpenClipboard(g_app.m_mainWindow) == 0) {
+		return false;
+	}
+	::EmptyClipboard();
+
+	size_t sizeInBytes = text.size() * sizeof(wchar_t);
+	HGLOBAL hglbCopy = GlobalAlloc(GMEM_MOVEABLE, sizeInBytes + 1);
+	if (hglbCopy != NULL) {
+		char * buffer = (char *) GlobalLock(hglbCopy);
+		if (buffer == nullptr) {
+			return false;
+		}
+		memcpy(buffer, text.c_str(), sizeInBytes);
+		buffer[sizeInBytes] = 0;
+		GlobalUnlock(hglbCopy);
+
+		::SetClipboardData(CF_UNICODETEXT, hglbCopy);
+	}
+	::CloseClipboard();
+	return true;
+
 }
 
 } // namespace
@@ -234,67 +259,6 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			break;
 
-		case VK_SPACE:
-			if (!m_searchMode) {
-				if (0 <= currentItem && currentItem < m_items.size()) {
-					m_items[currentItem].selected = !m_items[currentItem].selected;
-					InvalidateRect(hwnd, NULL, FALSE);
-				}
-			}
-			break;
-
-		case VK_MULTIPLY:
-			for (int i = 0; i < m_items.size(); ++i) {
-				m_items[i].selected = !m_items[i].selected;
-			}
-			InvalidateRect(hwnd, NULL, FALSE);
-			break;
-
-		case VK_ADD:
-			if (!m_searchMode) {
-				if (ctrl) {
-					for (int i = 0; i < m_items.size(); ++i) {
-						m_items[i].selected = true;
-					}
-				} else {
-					for (int i = 0; i < m_items.size(); ++i) {
-						if (m_items[i].text[0] != L'?') {
-							m_items[i].selected = true;
-						}
-					}
-				}
-				InvalidateRect(hwnd, NULL, FALSE);
-			}
-			break;
-
-		case VK_SUBTRACT:
-			if (!m_searchMode) {
-				if (ctrl) {
-					for (int i = 0; i < m_items.size(); ++i) {
-						m_items[i].selected = false;
-					}
-				} else {
-					for (int i = 0; i < m_items.size(); ++i) {
-						if (m_items[i].text[0] != L'?') {
-							m_items[i].selected = false;
-						}
-					}
-				}
-				InvalidateRect(hwnd, NULL, FALSE);
-			}
-			break;
-
-		case VK_INSERT:
-			if (0 <= currentItem && currentItem < m_items.size()) {
-				m_items[currentItem].selected = !m_items[currentItem].selected;
-				if (currentItem + 1 < (int) m_items.size()) {
-					++currentItem;
-					ScrollIntoView();
-				}
-				InvalidateRect(hwnd, NULL, FALSE);
-			}
-			break;
-
 		case VK_ESCAPE:
 			if (m_filterString.length() > 0) {
 				m_filterString.clear();
@@ -305,76 +269,200 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			break;
 
-		case VK_RETURN: {
-			std::wstring str;
-			for (int i = 0; i < m_items.size(); ++i) {
-				if (!m_items[i].selected) {
-					continue;
-				}
-				if (str.empty()) {
-					str += m_items[i].text.substr(3);
-				} else {
-					str += L" ";
-					str += m_items[i].text.substr(3);
-				}
+		case VK_TAB: {
+			if (m_mode == STATUS) {
+				GitBranch();
+			} else if (m_mode == BRANCH) {
+				GitStatus();
 			}
-			if (str.empty()) {
-				SendToTerminal(m_items[currentItem].text.substr(3));
-			}
-			SendToTerminal(str);
-			DestroyWindow(hwnd);
 			break;
 		}
 
 		case 'R': {
 			if (ctrl) {
-				GitStatus();
-			}
-			break;
-		}
-
-		case VK_F3: {
-			bool diffStaged = false;
-			if (0 <= currentItem && currentItem < m_items.size()) {
-				if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
-					diffStaged = true;
+				if (m_mode == STATUS) {
+					GitStatus();
+				} else {
+					GitBranch();
 				}
 			}
+			break;
+		}
+	}
 
-			std::wstring filename = m_items[currentItem].text.substr(3);
+	// Status
 
-			m_message = diffStaged ? L"git difftool --staged " + filename : L"git difftool " + filename;
-			RedrawWindow(m_mainWindow, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
-			if (diffStaged) {
-				exec(m_root, m_git + L" difftool --staged " + filename, [](const char * data, DWORD size) {});
-			} else {
-				exec(m_root, m_git + L" difftool " + filename, [](const char * data, DWORD size) {});
+	if (m_mode == STATUS) {
+		switch (wparam) {
+			case VK_SPACE:
+				if (!m_searchMode) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						m_items[currentItem].selected = !m_items[currentItem].selected;
+						InvalidateRect(hwnd, NULL, FALSE);
+					}
+				}
+				break;
+
+			case VK_MULTIPLY:
+				for (int i = 0; i < m_items.size(); ++i) {
+					m_items[i].selected = !m_items[i].selected;
+				}
+				InvalidateRect(hwnd, NULL, FALSE);
+				break;
+
+			case VK_ADD:
+				if (!m_searchMode) {
+					if (ctrl) {
+						for (int i = 0; i < m_items.size(); ++i) {
+							m_items[i].selected = true;
+						}
+					} else {
+						for (int i = 0; i < m_items.size(); ++i) {
+							if (m_items[i].text[0] != L'?') {
+								m_items[i].selected = true;
+							}
+						}
+					}
+					InvalidateRect(hwnd, NULL, FALSE);
+				}
+				break;
+
+			case VK_SUBTRACT:
+				if (!m_searchMode) {
+					if (ctrl) {
+						for (int i = 0; i < m_items.size(); ++i) {
+							m_items[i].selected = false;
+						}
+					} else {
+						for (int i = 0; i < m_items.size(); ++i) {
+							if (m_items[i].text[0] != L'?') {
+								m_items[i].selected = false;
+							}
+						}
+					}
+					InvalidateRect(hwnd, NULL, FALSE);
+				}
+				break;
+
+			case VK_INSERT:
+				if (0 <= currentItem && currentItem < m_items.size()) {
+					m_items[currentItem].selected = !m_items[currentItem].selected;
+					if (currentItem + 1 < (int) m_items.size()) {
+						++currentItem;
+						ScrollIntoView();
+					}
+					InvalidateRect(hwnd, NULL, FALSE);
+				}
+				break;
+
+			case VK_RETURN: {
+				std::wstring str;
+				for (int i = 0; i < m_items.size(); ++i) {
+					if (!m_items[i].selected) {
+						continue;
+					}
+					if (str.empty()) {
+						str += m_items[i].text.substr(3);
+					} else {
+						str += L" ";
+						str += m_items[i].text.substr(3);
+					}
+				}
+				if (str.empty()) {
+					SendToTerminal(m_items[currentItem].text.substr(3));
+				}
+				SendToTerminal(str);
+				DestroyWindow(hwnd);
+				break;
 			}
-			m_message += L" [DONE]";
-			GitStatus();
-			return;
-		}
 
-		case VK_F5: {
-			exec(m_root, m_git + L" add " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
-			GitStatus();
-			break;
-		}
+			case VK_F3: {
+				bool diffStaged = false;
+				if (0 <= currentItem && currentItem < m_items.size()) {
+					if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
+						diffStaged = true;
+					}
+				}
 
-		case VK_F7: {
-			exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
-			GitStatus();
-			break;
-		}
+				std::wstring filename = m_items[currentItem].text.substr(3);
 
-		case 'X': {
-			const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
-			if (ctrl) {
-				exec(m_root, m_git + L" rm " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				m_message = diffStaged ? L"git difftool --staged " + filename : L"git difftool " + filename;
+				RedrawWindow(m_mainWindow, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
+				if (diffStaged) {
+					exec(m_root, m_git + L" difftool --staged " + filename, [](const char * data, DWORD size) {});
+				} else {
+					exec(m_root, m_git + L" difftool " + filename, [](const char * data, DWORD size) {});
+				}
+				m_message += L" [DONE]";
 				GitStatus();
 				return;
 			}
-			break;
+
+			case VK_F4: {
+				exec(m_root, m_sublime + L" " + m_root + L"\\" + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				GitStatus();
+				break;
+			}
+
+			case VK_F5: {
+				exec(m_root, m_git + L" add " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				GitStatus();
+				break;
+			}
+
+			case VK_F7: {
+				exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				GitStatus();
+				break;
+			}
+
+			case 'C': {
+				if (ctrl) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring filename = m_items[currentItem].text.substr(3);
+						setClipboard(m_root + L"\\" + filename);
+					}
+				}
+				break;
+			}
+
+			case 'O': {
+				if (ctrl) {
+					if (0 <= currentItem && currentItem < m_items.size()) {
+						std::wstring filename = m_items[currentItem].text.substr(3);
+						VisualStudioInterop::OpenInVS(filename);
+					}
+				}
+				break;
+			}
+
+			case 'X': {
+				const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+				if (ctrl) {
+					exec(m_root, m_git + L" rm " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+					GitStatus();
+					return;
+				}
+				break;
+			}
+		}
+	}
+
+	if (m_mode == BRANCH) {
+		switch (wparam) {
+			case VK_RETURN: {
+				SendToTerminal(m_items[currentItem].text.substr(2));
+				DestroyWindow(hwnd);
+				break;
+			}
+			case 'F': {
+				if (ctrl) {
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git fetch origin " + branch + L":" + branch + L"\n");
+					DestroyWindow(hwnd);
+				}
+				break;
+			}
 		}
 	}
 }
@@ -479,17 +567,21 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 		if (!m_message.empty()) {
 			graphics.DrawString(m_message.c_str(), -1, nmfont.get(), point, &fg);
 		} else {
-			bool diffStaged = false;
-			if (0 <= currentItem && currentItem < m_items.size()) {
-				if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
-					diffStaged = true;
-				}
-			}
 			graphics.FillRectangle(&bgStatus, statusbarRect);
-			if (diffStaged) {
-				graphics.DrawString(L"   F3 Diff [s]   F5 Add   F7 Restore   Ctrl+R Refresh    Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+			if (m_mode == STATUS) {
+				bool diffStaged = false;
+				if (0 <= currentItem && currentItem < m_items.size()) {
+					if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
+						diffStaged = true;
+					}
+				}
+				if (diffStaged) {
+					graphics.DrawString(L"   F3 Diff [s]   F4 Sublime   F5 Add   F7 Restore   Ctrl+C Copy   Ctrl+R Refresh   Ctrl+O Open   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+				} else {
+					graphics.DrawString(L"   F3 Diff [H]   F4 Sublime   F5 Add   F7 Restore   Ctrl+C Copy   Ctrl+R Refresh   Ctrl+O Open   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+				}
 			} else {
-				graphics.DrawString(L"   F3 Diff [H]   F5 Add   F7 Restore   Ctrl+R Refresh    Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+				graphics.DrawString(L"   Ctrl+F Fetch", -1, nmfont.get(), point, &fg);
 			}
 		}
 	}
@@ -517,7 +609,7 @@ void Application::UpdateFilter() {
 	int best = 0;
 	int score = 0;
  	for (int i = 0; i < m_items.size(); ++i) {
-		std::wstring text = &m_items[i].text[3];
+		std::wstring text = &m_items[i].text[2];
  		std::transform(text.begin(), text.end(), text.begin(), ::toupper);
 
 		m_items[i].match = true;
@@ -590,6 +682,7 @@ void Application::ScrollIntoView() {
 }
 
 void Application::GitStatus() {
+	m_mode = STATUS;
 	std::string status;
 	m_items.clear();
 	exec(m_root, m_git + L" status --branch --porcelain", [&status](const char * data, DWORD size) { status.append(data, size); });
@@ -603,5 +696,25 @@ void Application::GitStatus() {
 	if (currentItem >= m_items.size()) {
 		currentItem = (int) (m_items.size() - 1);
 	}
+	UpdateFilter();
+	InvalidateRect(m_mainWindow, NULL, FALSE);
+}
+
+void Application::GitBranch() {
+	m_mode = BRANCH;
+	std::string status;
+	m_items.clear();
+	exec(m_root, m_git + L" branch", [&status](const char * data, DWORD size) { status.append(data, size); });
+	std::wstring wstatus = utf8_to_wstr(status);
+	std::vector<std::wstring> files;
+	split(wstatus, files);
+	//SetWindowText(m_mainWindow, files[0].c_str());
+	for (size_t i = 0; i < files.size(); ++i) {
+		m_items.emplace_back(Item(files[i]));
+	}
+	if (currentItem >= m_items.size()) {
+		currentItem = (int) (m_items.size() - 1);
+	}
+	UpdateFilter();
 	InvalidateRect(m_mainWindow, NULL, FALSE);
 }
