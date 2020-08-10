@@ -15,6 +15,7 @@ public:
 
     static LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam);
 
+    void Refresh();
     void GitStatus();
     void GitBranch();
 

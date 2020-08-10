@@ -280,11 +280,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 		case 'R': {
 			if (ctrl) {
-				if (m_mode == STATUS) {
-					GitStatus();
-				} else {
-					GitBranch();
-				}
+				Refresh();
 			}
 			break;
 		}
@@ -710,6 +706,14 @@ void Application::ScrollIntoView() {
 		scrollOffset = currentItem;
 	} else if (currentItem > scrollOffset + m_pagesize) {
 		scrollOffset = currentItem - m_pagesize;
+	}
+}
+
+void Application::Refresh() {
+	if (m_mode == STATUS) {
+		GitStatus();
+	} else {
+		GitBranch();
 	}
 }
 

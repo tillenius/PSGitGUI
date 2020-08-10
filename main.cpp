@@ -31,7 +31,14 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
     g_app.m_hInstance = GetModuleHandle(NULL);
 
     if (argc > 1) {
-        g_app.m_root = argv[1];
+        if (argv[1] == std::wstring(L"-b")) {
+            g_app.m_mode = Application::BRANCH;
+            if (argc > 2) {
+                g_app.m_root = argv[2];
+            }
+        } else {
+            g_app.m_root = argv[1];
+        }
     }
 
     WNDCLASS wClass{};
@@ -69,7 +76,7 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
         return 0;
     }
 
-    g_app.GitStatus();
+    g_app.Refresh();
 
     ShowWindow(hWnd, SW_SHOWNORMAL);
     UpdateWindow(hWnd);
