@@ -163,6 +163,54 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 	const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 
 	switch (wparam) {
+		case VK_BACK: {
+			m_searchMode = false;
+			if (m_filterString.length() > 0) {
+				m_filterString.erase(m_filterString.end() - 1);
+				UpdateFilter();
+				InvalidateRect(hwnd, NULL, FALSE);
+			}
+			break;
+		}
+
+		case VK_ESCAPE: {
+			if (m_filterString.length() > 0) {
+				m_filterString.clear();
+				UpdateFilter();
+				InvalidateRect(hwnd, NULL, FALSE);
+			} else {
+				DestroyWindow(hwnd);
+			}
+			break;
+		}
+
+		case VK_TAB: {
+			if (m_mode == STATUS) {
+				GitBranch();
+			} else if (m_mode == BRANCH) {
+				GitStatus();
+			}
+			break;
+		}
+
+		case 'R': {
+			if (ctrl) {
+				Refresh();
+			}
+			break;
+		}
+	}
+
+	if (currentItem < 0 || currentItem >= m_items.size()) {
+		if (m_items.empty()) {
+			return;
+		}
+		currentItem = 0;
+		ScrollIntoView();
+		InvalidateRect(hwnd, NULL, FALSE);
+	}
+
+	switch (wparam) {
 
 		//case VK_LEFT:
 		//	if (filterCursor > 0) {
@@ -185,16 +233,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 		//	}
 		//	break;
 
-		case VK_BACK:
-			m_searchMode = false;
-			if (m_filterString.length() > 0) {
-				m_filterString.erase(m_filterString.end() - 1);
-				UpdateFilter();
-				InvalidateRect(hwnd, NULL, FALSE);
-			}
-			break;
-
-		case VK_HOME:
+		case VK_HOME: {
 			m_searchMode = false;
 			currentItem = 0;
 			if (!m_items[currentItem].match) {
@@ -203,8 +242,9 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
 			break;
+		}
 
-		case VK_END:
+		case VK_END: {
 			m_searchMode = false;
 			currentItem = (int) m_items.size() - 1;
 			if (!m_items[currentItem].match) {
@@ -213,14 +253,16 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
 			break;
+		}
 
-		case VK_UP:
+		case VK_UP: {
 			m_searchMode = false;
 			if (SelectPrevMatch()) {
 				ScrollIntoView();
 				InvalidateRect(hwnd, NULL, FALSE);
 			}
 			break;
+		}
 
 		case VK_PRIOR: {
 			m_searchMode = false;
@@ -252,35 +294,10 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			break;
 		}
 
-		case VK_DOWN:
+		case VK_DOWN: {
 			if (SelectNextMatch()) {
 				ScrollIntoView();
 				InvalidateRect(hwnd, NULL, FALSE);
-			}
-			break;
-
-		case VK_ESCAPE:
-			if (m_filterString.length() > 0) {
-				m_filterString.clear();
-				UpdateFilter();
-				InvalidateRect(hwnd, NULL, FALSE);
-			} else {
-				DestroyWindow(hwnd);
-			}
-			break;
-
-		case VK_TAB: {
-			if (m_mode == STATUS) {
-				GitBranch();
-			} else if (m_mode == BRANCH) {
-				GitStatus();
-			}
-			break;
-		}
-
-		case 'R': {
-			if (ctrl) {
-				Refresh();
 			}
 			break;
 		}
@@ -290,23 +307,23 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 	if (m_mode == STATUS) {
 		switch (wparam) {
-			case VK_SPACE:
+			case VK_SPACE: {
 				if (!m_searchMode) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						m_items[currentItem].selected = !m_items[currentItem].selected;
-						InvalidateRect(hwnd, NULL, FALSE);
-					}
+					m_items[currentItem].selected = !m_items[currentItem].selected;
+					InvalidateRect(hwnd, NULL, FALSE);
 				}
 				break;
+			}
 
-			case VK_MULTIPLY:
+			case VK_MULTIPLY: {
 				for (int i = 0; i < m_items.size(); ++i) {
 					m_items[i].selected = !m_items[i].selected;
 				}
 				InvalidateRect(hwnd, NULL, FALSE);
 				break;
+			}
 
-			case VK_ADD:
+			case VK_ADD: {
 				if (!m_searchMode) {
 					if (ctrl) {
 						for (int i = 0; i < m_items.size(); ++i) {
@@ -322,8 +339,9 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 					InvalidateRect(hwnd, NULL, FALSE);
 				}
 				break;
+			}
 
-			case VK_SUBTRACT:
+			case VK_SUBTRACT: {
 				if (!m_searchMode) {
 					if (ctrl) {
 						for (int i = 0; i < m_items.size(); ++i) {
@@ -339,17 +357,17 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 					InvalidateRect(hwnd, NULL, FALSE);
 				}
 				break;
+			}
 
-			case VK_INSERT:
-				if (0 <= currentItem && currentItem < m_items.size()) {
-					m_items[currentItem].selected = !m_items[currentItem].selected;
-					if (currentItem + 1 < (int) m_items.size()) {
-						++currentItem;
-						ScrollIntoView();
-					}
-					InvalidateRect(hwnd, NULL, FALSE);
+			case VK_INSERT: {
+				m_items[currentItem].selected = !m_items[currentItem].selected;
+				if (currentItem + 1 < (int) m_items.size()) {
+					++currentItem;
+					ScrollIntoView();
 				}
+				InvalidateRect(hwnd, NULL, FALSE);
 				break;
+			}
 
 			case VK_RETURN: {
 				std::wstring str;
@@ -374,10 +392,8 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case VK_F3: {
 				bool diffStaged = false;
-				if (0 <= currentItem && currentItem < m_items.size()) {
-					if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
-						diffStaged = true;
-					}
+				if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
+					diffStaged = true;
 				}
 
 				std::wstring filename = m_items[currentItem].text.substr(3);
@@ -414,20 +430,18 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'C': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring filename = m_items[currentItem].text.substr(3);
-						setClipboard(m_root + L"\\" + filename);
-					}
+					std::wstring filename = m_items[currentItem].text.substr(3);
+					setClipboard(m_root + L"\\" + filename);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
 
 			case 'O': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring filename = m_items[currentItem].text.substr(3);
-						VisualStudioInterop::OpenInVS(filename);
-					}
+					std::wstring filename = m_items[currentItem].text.substr(3);
+					VisualStudioInterop::OpenInVS(filename);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
@@ -447,47 +461,58 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 	if (m_mode == BRANCH) {
 		switch (wparam) {
 			case VK_RETURN: {
-				SendToTerminal(m_items[currentItem].text.substr(2));
-				DestroyWindow(hwnd);
+				if (ctrl) {
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git switch " + branch);
+					DestroyWindow(hwnd);
+				} else {
+					SendToTerminal(m_items[currentItem].text.substr(2));
+					DestroyWindow(hwnd);
+				}
 				break;
 			}
+
+			case 'C': {
+				if (ctrl) {
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					setClipboard(branch);
+					DestroyWindow(hwnd);
+				}
+				break;
+			}
+
 			case 'F': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring branch = m_items[currentItem].text.substr(2);
-						SendToTerminal(L"git fetch origin " + branch + L":" + branch);
-						DestroyWindow(hwnd);
-					}
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git fetch origin " + branch + L":" + branch);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
+
 			case 'L': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring branch = m_items[currentItem].text.substr(2);
-						SendToTerminal(L"git log " + branch);
-						DestroyWindow(hwnd);
-					}
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git log " + branch);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
+
 			case 'O': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring branch = m_items[currentItem].text.substr(2);
-						SendToTerminal(L"git switch " + branch);
-						DestroyWindow(hwnd);
-					}
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git switch " + branch);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
+
 			case 'X': {
 				if (ctrl) {
-					if (0 <= currentItem && currentItem < m_items.size()) {
-						std::wstring branch = m_items[currentItem].text.substr(2);
-						SendToTerminal(L"git branch -D " + branch);
-						DestroyWindow(hwnd);
-					}
+					std::wstring branch = m_items[currentItem].text.substr(2);
+					SendToTerminal(L"git branch -D " + branch);
+					DestroyWindow(hwnd);
 				}
 				break;
 			}
@@ -609,7 +634,7 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 					graphics.DrawString(L"   F3 Diff [H]   F4 Sublime   F5 Add   F7 Restore   Ctrl+C Copy   Ctrl+R Refresh   Ctrl+O Open   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
 				}
 			} else {
-				graphics.DrawString(L"   Ctrl+F Fetch   Ctrl+L Log   Ctrl+O Switch   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+				graphics.DrawString(L"   Ctrl+C Copy   Ctrl+F Fetch   Ctrl+L Log   Ctrl+O Switch   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
 			}
 		}
 	}
