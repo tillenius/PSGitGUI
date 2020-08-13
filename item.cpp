@@ -4,7 +4,7 @@
 #include <gdiplus.h>
 
 
-void Item::paint(Gdiplus::Graphics & graphics, const Gdiplus::RectF & itemRect, bool current) {
+void Item::paint(Gdiplus::Graphics & graphics, const Gdiplus::RectF & itemRect, std::function<std::wstring(std::vector<std::wstring>)> formatter, bool current) {
 
 	Gdiplus::Color bgColor;
 	if (current && !selected) {
@@ -31,9 +31,11 @@ void Item::paint(Gdiplus::Graphics & graphics, const Gdiplus::RectF & itemRect, 
 	clip.GetLocation(&point);
 	point.Y += 2;
 
+	std::wstring disp = formatter(text);
+
 	if (match) {
-		graphics.DrawString(text.c_str(), -1, g_app.font.get(), point, &fg);
+		graphics.DrawString(disp.c_str(), -1, g_app.font.get(), point, &fg);
 	} else {
-		graphics.DrawString(text.c_str(), -1, g_app.font.get(), point, &fgnomatch);
+		graphics.DrawString(disp.c_str(), -1, g_app.font.get(), point, &fgnomatch);
 	}
 }

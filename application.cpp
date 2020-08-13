@@ -1,10 +1,19 @@
+#define NOMINMAX
+
+#include <algorithm>
+
+namespace Gdiplus
+{
+using std::min;
+using std::max;
+}
+
 #include "application.h"
 #include "runscript.h"
 #include "visualstudio.h"
 
 #include "Shlobj.h"
 #include <iostream>
-#include <algorithm>
 #include <sstream>
 
 Application g_app;
@@ -331,7 +340,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						}
 					} else {
 						for (int i = 0; i < m_items.size(); ++i) {
-							if (m_items[i].text[0] != L'?') {
+							if (m_items[i].text[1][0] != L'?') {
 								m_items[i].selected = true;
 							}
 						}
@@ -349,7 +358,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						}
 					} else {
 						for (int i = 0; i < m_items.size(); ++i) {
-							if (m_items[i].text[0] != L'?') {
+							if (m_items[i].text[1][0] != L'?') {
 								m_items[i].selected = false;
 							}
 						}
@@ -376,14 +385,14 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						continue;
 					}
 					if (str.empty()) {
-						str += m_items[i].text.substr(3);
+						str += m_items[i].text[0];
 					} else {
 						str += L" ";
-						str += m_items[i].text.substr(3);
+						str += m_items[i].text[0];
 					}
 				}
 				if (str.empty()) {
-					SendToTerminal(m_items[currentItem].text.substr(3));
+					SendToTerminal(m_items[currentItem].text[0]);
 				}
 				SendToTerminal(str);
 				DestroyWindow(hwnd);
@@ -392,11 +401,11 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case VK_F3: {
 				bool diffStaged = false;
-				if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
+				if (m_items[currentItem].text[1][0] == 'M' && m_items[currentItem].text[1][1] == ' ') {
 					diffStaged = true;
 				}
 
-				std::wstring filename = m_items[currentItem].text.substr(3);
+				std::wstring filename = m_items[currentItem].text[0];
 
 				m_message = diffStaged ? L"git difftool --staged " + filename : L"git difftool " + filename;
 				RedrawWindow(m_mainWindow, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
@@ -411,26 +420,26 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 
 			case VK_F4: {
-				exec(m_root, m_sublime + L" " + m_root + L"\\" + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				exec(m_root, m_sublime + L" " + m_root + L"\\" + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
 				GitStatus();
 				break;
 			}
 
 			case VK_F5: {
-				exec(m_root, m_git + L" add " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				exec(m_root, m_git + L" add " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
 				GitStatus();
 				break;
 			}
 
 			case VK_F7: {
-				exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+				exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
 				GitStatus();
 				break;
 			}
 
 			case 'C': {
 				if (ctrl) {
-					std::wstring filename = m_items[currentItem].text.substr(3);
+					std::wstring filename = m_items[currentItem].text[0];
 					setClipboard(m_root + L"\\" + filename);
 					DestroyWindow(hwnd);
 				}
@@ -439,7 +448,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'O': {
 				if (ctrl) {
-					std::wstring filename = m_items[currentItem].text.substr(3);
+					std::wstring filename = m_items[currentItem].text[0];
 					VisualStudioInterop::OpenInVS(filename);
 					DestroyWindow(hwnd);
 				}
@@ -449,7 +458,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			case 'X': {
 				const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 				if (ctrl) {
-					exec(m_root, m_git + L" rm " + m_items[currentItem].text.substr(3), [](const char * data, DWORD size) {});
+					exec(m_root, m_git + L" rm " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
 					GitStatus();
 					return;
 				}
@@ -462,11 +471,10 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 		switch (wparam) {
 			case VK_RETURN: {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					SendToTerminal(L"git switch " + branch);
+					SendToTerminal(L"git switch " + m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				} else {
-					SendToTerminal(m_items[currentItem].text.substr(2));
+					SendToTerminal(m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				}
 				break;
@@ -474,8 +482,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'C': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					setClipboard(branch);
+					setClipboard(m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				}
 				break;
@@ -483,7 +490,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'F': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
+					const std::wstring & branch = m_items[currentItem].text[0];
 					SendToTerminal(L"git fetch origin " + branch + L":" + branch);
 					DestroyWindow(hwnd);
 				}
@@ -492,8 +499,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'L': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					SendToTerminal(L"git log " + branch);
+					SendToTerminal(L"git log " + m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				}
 				break;
@@ -501,8 +507,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'O': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					SendToTerminal(L"git switch " + branch);
+					SendToTerminal(L"git switch " + m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				}
 				break;
@@ -510,8 +515,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 
 			case 'X': {
 				if (ctrl) {
-					std::wstring branch = m_items[currentItem].text.substr(2);
-					SendToTerminal(L"git branch -D " + branch);
+					SendToTerminal(L"git branch -D " + m_items[currentItem].text[0]);
 					DestroyWindow(hwnd);
 				}
 				break;
@@ -560,17 +564,37 @@ void Application::layout(const Gdiplus::RectF & rect) {
 	}
 }
 
+std::wstring format(const std::wstring & text, size_t len) {
+	const size_t textLen = text.size();
+	if (textLen > len) {
+		return text.substr(0, len);
+	}
+	if (textLen == len) {
+		return text;
+	}
+	return text + std::wstring(len - textLen, L' ');
+}
+
 void Application::paint(Gdiplus::Graphics & graphics) {
 
 	Gdiplus::RectF itemRect = itemsRect;
 	itemRect.Y = 0;
 	itemRect.Height = ITEM_HEIGHT;
 
+	auto statusFormatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[1] + item[0];
+	};
+	auto branchFormatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[1] + format(item[0], 16) + L" " + item[2] + L" " + item[3] + L" " + item[4] + L" " + item[5] + L" " + item[6];
+	};
+
+	auto formatter = ( m_mode == STATUS ) ? statusFormatter : branchFormatter;
+
 	for (int i = scrollOffset; i < m_items.size(); ++i) {
 		if (i > scrollOffset + m_pagesize) {
 			break;
 		}
-		m_items[i].paint(graphics, itemRect, currentItem == i);
+		m_items[i].paint(graphics, itemRect, formatter, currentItem == i);
 		itemRect.Y += ITEM_HEIGHT;
 	}
 
@@ -624,7 +648,7 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 			if (m_mode == STATUS) {
 				bool diffStaged = false;
 				if (0 <= currentItem && currentItem < m_items.size()) {
-					if (m_items[currentItem].text[0] == 'M' && m_items[currentItem].text[1] == ' ') {
+					if (m_items[currentItem].text[0][0] == 'M' && m_items[currentItem].text[0][1] == ' ') {
 						diffStaged = true;
 					}
 				}
@@ -662,7 +686,7 @@ void Application::UpdateFilter() {
 	int best = 0;
 	int score = 0;
  	for (int i = 0; i < m_items.size(); ++i) {
-		std::wstring text = &m_items[i].text[2];
+		std::wstring text = m_items[i].text[0];
  		std::transform(text.begin(), text.end(), text.begin(), ::toupper);
 
 		m_items[i].match = true;
@@ -752,7 +776,9 @@ void Application::GitStatus() {
 	split(wstatus, files);
 	SetWindowText(m_mainWindow, files[0].c_str());
 	for (size_t i = 1; i < files.size(); ++i) {
-		m_items.emplace_back(Item(files[i]));
+		std::wstring status = files[i].substr(0, 3);
+		std::wstring name = files[i].substr(3);
+		m_items.emplace_back(Item({name, status}));
 	}
 	if (currentItem >= m_items.size()) {
 		currentItem = (int) (m_items.size() - 1);
@@ -765,13 +791,30 @@ void Application::GitBranch() {
 	m_mode = BRANCH;
 	std::string status;
 	m_items.clear();
-	exec(m_root, m_git + L" branch", [&status](const char * data, DWORD size) { status.append(data, size); });
+	std::wstring cmd = m_git + L" for-each-ref --format=\"%(HEAD)%(refname:lstrip=-1) %(objectname:short) %(authordate:iso) %(authoremail) %(subject)\" refs/heads";
+	exec(m_root, cmd, [&status](const char * data, DWORD size) { status.append(data, size); });
+
 	std::wstring wstatus = utf8_to_wstr(status);
 	std::vector<std::wstring> files;
 	split(wstatus, files);
 	//SetWindowText(m_mainWindow, files[0].c_str());
 	for (size_t i = 0; i < files.size(); ++i) {
-		m_items.emplace_back(Item(files[i]));
+		// "*name hash 2020-07-28 23:24:14 +0200 <name@mail.com> description"
+		const int nameIdx = 1;
+		const int hashIdx = files[i].find(L' ', nameIdx) + 1;
+		const int dateIdx = files[i].find(L' ', hashIdx) + 1;
+		const int timeIdx = files[i].find(L' ', dateIdx) + 1;
+		const int zoneIdx = files[i].find(L' ', timeIdx) + 1;
+		const int mailIdx = files[i].find(L' ', zoneIdx) + 1;
+		const int descIdx = files[i].find(L' ', mailIdx) + 1;
+		std::wstring head{files[i][0]};
+		std::wstring name = files[i].substr(nameIdx, hashIdx - nameIdx - 1);
+		std::wstring hash = files[i].substr(hashIdx, dateIdx - hashIdx - 1);
+		std::wstring date = files[i].substr(dateIdx, timeIdx - dateIdx - 1);
+		std::wstring time = files[i].substr(timeIdx, zoneIdx - timeIdx - 1);
+		std::wstring mail = files[i].substr(mailIdx + 1, descIdx - mailIdx - 3);
+		std::wstring desc = files[i].substr(descIdx);
+		m_items.emplace_back(Item({name, head, hash, date, time, mail, desc}));
 	}
 	if (currentItem >= m_items.size()) {
 		currentItem = (int) (m_items.size() - 1);
