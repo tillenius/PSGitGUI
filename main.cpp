@@ -32,7 +32,7 @@ int wmain(int argc, wchar_t * argv[], wchar_t * envp[]) {
 
     if (argc > 1) {
         if (argv[1] == std::wstring(L"-b")) {
-            g_app.m_mode = Application::BRANCH;
+            g_app.m_viewStack[0] = {Application::BRANCH, 0, L"", L""};
             if (argc > 2) {
                 g_app.m_root = argv[2];
             }

@@ -4,8 +4,35 @@
 #include <string>
 #include <array>
 #include <functional>
+#include <vector>
 #include <Windows.h>
 #include <mbstring.h>
+
+static void split(const std::wstring & str, std::vector<std::wstring> & split) {
+	std::size_t current = 0;
+	std::size_t previous = 0;
+	while ((current = str.find(L"\n", previous)) != std::string::npos) {
+		split.push_back(str.substr(previous, current - previous));
+		previous = current + 1;
+	}
+	std::wstring last = str.substr(previous, std::string::npos);
+	if (!last.empty()) {
+		split.push_back(last);
+	}
+}
+
+static std::wstring utf8_to_wstr(const std::string & str) {
+	size_t charsNeeded = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
+	if (charsNeeded == 0)
+		return std::wstring();
+
+	std::vector<wchar_t> buffer(charsNeeded);
+	size_t charsConverted = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &buffer[0], (int)buffer.size());
+	if (charsConverted == 0)
+		return std::wstring();
+
+	return std::wstring(&buffer[0], charsConverted);
+}
 
 void exec(const std::wstring & cwd, const std::wstring & cmd, std::function<void(const char *data, DWORD size)> callback) {
 
@@ -101,4 +128,14 @@ void exec(const std::wstring & cwd, const std::wstring & cmd, std::function<void
 	CloseHandle(stdoutPipeRead);
 	CloseHandle(piProcInfo.hProcess);
 	CloseHandle(piProcInfo.hThread);
+}
+
+std::vector<std::wstring> exec(const std::wstring & cwd, const std::wstring & cmd ) {
+	std::vector<std::wstring> lines;
+	std::string result;
+	exec(cwd, cmd, [&result](const char * data, DWORD size) { result.append(data, size); });
+
+	std::wstring wresult = utf8_to_wstr(result);
+	split(wresult, lines);
+	return lines;
 }

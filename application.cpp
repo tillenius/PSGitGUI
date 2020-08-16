@@ -20,31 +20,10 @@ Application g_app;
 
 namespace {
 
-static void split(const std::wstring & str, std::vector<std::wstring> & split) {
-	std::size_t current = 0;
-	std::size_t previous = 0;
-	while ((current = str.find(L"\n", previous)) != std::string::npos) {
-		split.push_back(str.substr(previous, current - previous));
-		previous = current + 1;
-	}
-	std::wstring last = str.substr(previous, std::string::npos);
-	if (!last.empty()) {
-		split.push_back(last);
-	}
-}
-
-static std::wstring utf8_to_wstr(const std::string & str) {
-	size_t charsNeeded = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), NULL, 0);
-	if (charsNeeded == 0)
-		return std::wstring();
-
-	std::vector<wchar_t> buffer(charsNeeded);
-	size_t charsConverted = ::MultiByteToWideChar(CP_UTF8, 0, str.data(), (int)str.size(), &buffer[0], (int)buffer.size());
-	if (charsConverted == 0)
-		return std::wstring();
-
-	return std::wstring(&buffer[0], charsConverted);
-}
+enum { STATUS_NAME = 0, STATUS_STATUS = 1 };
+enum { BRANCH_NAME = 0, BRANCH_HEAD, BRANCH_HASH, BRANCH_DATE, BRANCH_TIME, BRANCH_MAIL, BRANCH_DESC };
+enum { LOG_HASH = 0, LOG_MAIL, LOG_DATE, LOG_TIME, LOG_DESC };
+enum { DIFF_NAME = 0, DIFF_STATUS };
 
 static bool setClipboard(std::wstring text) {
 	if (::OpenClipboard(g_app.m_mainWindow) == 0) {
@@ -98,7 +77,10 @@ LRESULT CALLBACK Application::WndProc(HWND hwnd, UINT message, WPARAM wParam, LP
 		case WM_KEYDOWN:
 			g_app.OnKeyDown(hwnd, wParam);
 			return 0;
-		//case WM_ERASEBKGND:
+		case WM_SYSKEYDOWN:
+			g_app.OnSysKeyDown(hwnd, wParam);
+			return 0;
+			//case WM_ERASEBKGND:
 		//	return 1;
 		case WM_PAINT:
 			g_app.OnPaint(hwnd);
@@ -167,6 +149,20 @@ void Application::OnSize(HWND hwnd) {
 	RedrawWindow(m_mainWindow, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
 }
 
+void Application::OnSysKeyDown(HWND hwnd, WPARAM wparam) {
+	switch (wparam) {
+		case VK_LEFT: {
+			PrevView();
+			return;
+		}
+
+		case VK_RIGHT: {
+			NextView();
+			return;
+		}
+	}
+}
+
 void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 	m_message.clear();
 	const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
@@ -179,7 +175,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 				UpdateFilter();
 				InvalidateRect(hwnd, NULL, FALSE);
 			}
-			break;
+			return;
 		}
 
 		case VK_ESCAPE: {
@@ -190,21 +186,22 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			} else {
 				DestroyWindow(hwnd);
 			}
-			break;
+			return;
 		}
 
 		case VK_TAB: {
-			if (m_mode == STATUS) {
-				GitBranch();
-			} else if (m_mode == BRANCH) {
-				GitStatus();
+			if (GetCurrentMode() == STATUS) {
+				PushView({BRANCH, currentItem, L"", L""});
+			} else {
+				PushView({STATUS, currentItem, L"", L""});
 			}
-			break;
+			return;
 		}
 
 		case 'R': {
 			if (ctrl) {
 				Refresh();
+				return;
 			}
 			break;
 		}
@@ -250,7 +247,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
-			break;
+			return;
 		}
 
 		case VK_END: {
@@ -261,7 +258,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
-			break;
+			return;
 		}
 
 		case VK_UP: {
@@ -270,7 +267,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 				ScrollIntoView();
 				InvalidateRect(hwnd, NULL, FALSE);
 			}
-			break;
+			return;
 		}
 
 		case VK_PRIOR: {
@@ -285,7 +282,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
-			break;
+			return;
 		}
 
 		case VK_NEXT: {
@@ -300,7 +297,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			}
 			ScrollIntoView();
 			InvalidateRect(hwnd, NULL, FALSE);
-			break;
+			return;
 		}
 
 		case VK_DOWN: {
@@ -308,18 +305,19 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 				ScrollIntoView();
 				InvalidateRect(hwnd, NULL, FALSE);
 			}
-			break;
+			return;
 		}
 	}
 
 	// Status
 
-	if (m_mode == STATUS) {
+	if (GetCurrentMode() == STATUS) {
 		switch (wparam) {
 			case VK_SPACE: {
 				if (!m_searchMode) {
 					m_items[currentItem].selected = !m_items[currentItem].selected;
 					InvalidateRect(hwnd, NULL, FALSE);
+					return;
 				}
 				break;
 			}
@@ -329,7 +327,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 					m_items[i].selected = !m_items[i].selected;
 				}
 				InvalidateRect(hwnd, NULL, FALSE);
-				break;
+				return;
 			}
 
 			case VK_ADD: {
@@ -340,12 +338,13 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						}
 					} else {
 						for (int i = 0; i < m_items.size(); ++i) {
-							if (m_items[i].text[1][0] != L'?') {
+							if (m_items[i].text[STATUS_STATUS][0] != L'?') {
 								m_items[i].selected = true;
 							}
 						}
 					}
 					InvalidateRect(hwnd, NULL, FALSE);
+					return;
 				}
 				break;
 			}
@@ -358,12 +357,13 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						}
 					} else {
 						for (int i = 0; i < m_items.size(); ++i) {
-							if (m_items[i].text[1][0] != L'?') {
+							if (m_items[i].text[STATUS_STATUS][0] != L'?') {
 								m_items[i].selected = false;
 							}
 						}
 					}
 					InvalidateRect(hwnd, NULL, FALSE);
+					return;
 				}
 				break;
 			}
@@ -375,7 +375,7 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 					ScrollIntoView();
 				}
 				InvalidateRect(hwnd, NULL, FALSE);
-				break;
+				return;
 			}
 
 			case VK_RETURN: {
@@ -385,27 +385,27 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 						continue;
 					}
 					if (str.empty()) {
-						str += m_items[i].text[0];
+						str += m_items[i].text[STATUS_NAME];
 					} else {
 						str += L" ";
-						str += m_items[i].text[0];
+						str += m_items[i].text[STATUS_NAME];
 					}
 				}
 				if (str.empty()) {
-					SendToTerminal(m_items[currentItem].text[0]);
+					SendToTerminal(m_items[currentItem].text[STATUS_NAME]);
 				}
 				SendToTerminal(str);
 				DestroyWindow(hwnd);
-				break;
+				return;
 			}
 
 			case VK_F3: {
 				bool diffStaged = false;
-				if (m_items[currentItem].text[1][0] == 'M' && m_items[currentItem].text[1][1] == ' ') {
+				if (m_items[currentItem].text[STATUS_STATUS][0] == 'M' && m_items[currentItem].text[STATUS_STATUS][1] == ' ') {
 					diffStaged = true;
 				}
 
-				std::wstring filename = m_items[currentItem].text[0];
+				std::wstring filename = m_items[currentItem].text[STATUS_NAME];
 
 				m_message = diffStaged ? L"git difftool --staged " + filename : L"git difftool " + filename;
 				RedrawWindow(m_mainWindow, NULL, NULL, RDW_INVALIDATE | RDW_UPDATENOW);
@@ -415,42 +415,44 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 					exec(m_root, m_git + L" difftool " + filename, [](const char * data, DWORD size) {});
 				}
 				m_message += L" [DONE]";
-				GitStatus();
+				Refresh();
 				return;
 			}
 
 			case VK_F4: {
-				exec(m_root, m_sublime + L" " + m_root + L"\\" + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
-				GitStatus();
-				break;
+				exec(m_root, m_sublime + L" " + m_root + L"\\" + m_items[currentItem].text[STATUS_NAME], [](const char * data, DWORD size) {});
+				Refresh();
+				return;
 			}
 
 			case VK_F5: {
-				exec(m_root, m_git + L" add " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
-				GitStatus();
-				break;
+				exec(m_root, m_git + L" add " + m_items[currentItem].text[STATUS_NAME], [](const char * data, DWORD size) {});
+				Refresh();
+				return;
 			}
 
 			case VK_F7: {
-				exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
-				GitStatus();
-				break;
+				exec(m_root, m_git + L" restore --staged " + m_items[currentItem].text[STATUS_NAME], [](const char * data, DWORD size) {});
+				Refresh();
+				return;
 			}
 
 			case 'C': {
 				if (ctrl) {
-					std::wstring filename = m_items[currentItem].text[0];
+					std::wstring filename = m_items[currentItem].text[STATUS_NAME];
 					setClipboard(m_root + L"\\" + filename);
 					DestroyWindow(hwnd);
+					return;
 				}
 				break;
 			}
 
 			case 'O': {
 				if (ctrl) {
-					std::wstring filename = m_items[currentItem].text[0];
+					std::wstring filename = m_items[currentItem].text[STATUS_NAME];
 					VisualStudioInterop::OpenInVS(filename);
 					DestroyWindow(hwnd);
+					return;
 				}
 				break;
 			}
@@ -458,8 +460,8 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 			case 'X': {
 				const bool ctrl = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
 				if (ctrl) {
-					exec(m_root, m_git + L" rm " + m_items[currentItem].text[0], [](const char * data, DWORD size) {});
-					GitStatus();
+					exec(m_root, m_git + L" rm " + m_items[currentItem].text[STATUS_NAME], [](const char * data, DWORD size) {});
+					Refresh();
 					return;
 				}
 				break;
@@ -467,56 +469,110 @@ void Application::OnKeyDown(HWND hwnd, WPARAM wparam) {
 		}
 	}
 
-	if (m_mode == BRANCH) {
+	if (GetCurrentMode() == BRANCH) {
 		switch (wparam) {
 			case VK_RETURN: {
 				if (ctrl) {
-					SendToTerminal(L"git switch " + m_items[currentItem].text[0]);
+					SendToTerminal(L"git switch " + m_items[currentItem].text[BRANCH_NAME]);
 					DestroyWindow(hwnd);
 				} else {
-					SendToTerminal(m_items[currentItem].text[0]);
-					DestroyWindow(hwnd);
+					PushView({LOG, currentItem, m_items[currentItem].text[BRANCH_NAME], L"", L"log " + m_items[currentItem].text[BRANCH_NAME] });
+					//SendToTerminal(m_items[currentItem].text[BRANCH_NAME]);
+					//DestroyWindow(hwnd);
 				}
-				break;
+				return;
 			}
 
 			case 'C': {
 				if (ctrl) {
-					setClipboard(m_items[currentItem].text[0]);
+					setClipboard(m_items[currentItem].text[BRANCH_NAME]);
 					DestroyWindow(hwnd);
+					return;
 				}
 				break;
 			}
 
 			case 'F': {
 				if (ctrl) {
-					const std::wstring & branch = m_items[currentItem].text[0];
+					const std::wstring & branch = m_items[currentItem].text[BRANCH_NAME];
 					SendToTerminal(L"git fetch origin " + branch + L":" + branch);
 					DestroyWindow(hwnd);
+					return;
 				}
 				break;
 			}
 
 			case 'L': {
 				if (ctrl) {
-					SendToTerminal(L"git log " + m_items[currentItem].text[0]);
-					DestroyWindow(hwnd);
+					PushView({LOG, currentItem, m_items[currentItem].text[BRANCH_NAME], L"", L"log " + m_items[currentItem].text[BRANCH_NAME] });
+					return;
 				}
 				break;
 			}
 
 			case 'O': {
 				if (ctrl) {
-					SendToTerminal(L"git switch " + m_items[currentItem].text[0]);
+					SendToTerminal(L"git switch " + m_items[currentItem].text[BRANCH_NAME]);
 					DestroyWindow(hwnd);
+					return;
 				}
 				break;
 			}
 
 			case 'X': {
 				if (ctrl) {
-					SendToTerminal(L"git branch -D " + m_items[currentItem].text[0]);
+					SendToTerminal(L"git branch -D " + m_items[currentItem].text[BRANCH_NAME]);
 					DestroyWindow(hwnd);
+					return;
+				}
+				break;
+			}
+		}
+	}
+
+	if (GetCurrentMode() == LOG) {
+		switch (wparam) {
+			case VK_RETURN: {
+				if (ctrl) {
+					SendToTerminal(m_items[currentItem].text[LOG_HASH]);
+					DestroyWindow(hwnd);
+				} else {
+					PushView({DIFFTREE, currentItem, m_items[currentItem].text[LOG_HASH], L"", L"diff-tree " + m_items[currentItem].text[LOG_HASH].substr(0, 7) + L" " + m_items[currentItem].text[LOG_DESC]});
+				}
+				return;
+			}
+
+			case 'O': {
+				if (ctrl) {
+					PushView({DIFFTREE, currentItem, m_items[currentItem].text[LOG_HASH], L"", L"diff-tree " + m_items[currentItem].text[LOG_HASH].substr(0, 7) + L" " + m_items[currentItem].text[LOG_DESC]});
+					return;
+				}
+				break;
+			}
+		}
+	}
+
+	if (GetCurrentMode() == DIFFTREE) {
+		switch (wparam) {
+			case VK_RETURN: {
+				if (ctrl) {
+					SendToTerminal(m_items[currentItem].text[DIFF_NAME]);
+					DestroyWindow(hwnd);
+				} else {
+					PushView({LOG, currentItem, GetCurrentView().rev, m_items[currentItem].text[DIFF_NAME], L"log " + m_items[currentItem].text[DIFF_NAME] });
+				}
+				return;
+			}
+
+			case VK_F3: {
+				exec(m_root, m_git + L" difftool " + GetCurrentView().rev + L"^ " + GetCurrentView().rev + L" -- " + m_items[currentItem].text[DIFF_NAME], [](const char * data, DWORD size) {});
+				return;
+			}
+
+			case 'L': {
+				if (ctrl) {
+					PushView({LOG, currentItem, GetCurrentView().rev, m_items[currentItem].text[DIFF_NAME], L"log " + m_items[currentItem].text[DIFF_NAME] });
+					return;
 				}
 				break;
 			}
@@ -581,20 +637,11 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 	itemRect.Y = 0;
 	itemRect.Height = ITEM_HEIGHT;
 
-	auto statusFormatter = [](const std::vector<std::wstring> & item) -> std::wstring {
-		return item[1] + item[0];
-	};
-	auto branchFormatter = [](const std::vector<std::wstring> & item) -> std::wstring {
-		return item[1] + format(item[0], 16) + L" " + item[2] + L" " + item[3] + L" " + item[4] + L" " + item[5] + L" " + item[6];
-	};
-
-	auto formatter = ( m_mode == STATUS ) ? statusFormatter : branchFormatter;
-
 	for (int i = scrollOffset; i < m_items.size(); ++i) {
 		if (i > scrollOffset + m_pagesize) {
 			break;
 		}
-		m_items[i].paint(graphics, itemRect, formatter, currentItem == i);
+		m_items[i].paint(graphics, itemRect, m_formatter, currentItem == i);
 		itemRect.Y += ITEM_HEIGHT;
 	}
 
@@ -645,10 +692,10 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 			graphics.DrawString(m_message.c_str(), -1, nmfont.get(), point, &fg);
 		} else {
 			graphics.FillRectangle(&bgStatus, statusbarRect);
-			if (m_mode == STATUS) {
+			if (GetCurrentMode() == STATUS) {
 				bool diffStaged = false;
 				if (0 <= currentItem && currentItem < m_items.size()) {
-					if (m_items[currentItem].text[0][0] == 'M' && m_items[currentItem].text[0][1] == ' ') {
+					if (m_items[currentItem].text[STATUS_STATUS][0] == 'M' && m_items[currentItem].text[STATUS_STATUS][1] == ' ') {
 						diffStaged = true;
 					}
 				}
@@ -657,8 +704,11 @@ void Application::paint(Gdiplus::Graphics & graphics) {
 				} else {
 					graphics.DrawString(L"   F3 Diff [H]   F4 Sublime   F5 Add   F7 Restore   Ctrl+C Copy   Ctrl+R Refresh   Ctrl+O Open   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
 				}
-			} else {
+			} else if (GetCurrentMode() == BRANCH) {
 				graphics.DrawString(L"   Ctrl+C Copy   Ctrl+F Fetch   Ctrl+L Log   Ctrl+O Switch   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+			} else if (GetCurrentMode() == LOG) {
+				graphics.DrawString(L"   Ctrl+C Copy   Ctrl+F Fetch   Ctrl+L Log   Ctrl+O Switch   Ctrl+X Delete", -1, nmfont.get(), point, &fg);
+			} else if (GetCurrentMode() == DIFFTREE) {
 			}
 		}
 	}
@@ -759,27 +809,15 @@ void Application::ScrollIntoView() {
 }
 
 void Application::Refresh() {
-	if (m_mode == STATUS) {
-		GitStatus();
-	} else {
-		GitBranch();
-	}
-}
-
-void Application::GitStatus() {
-	m_mode = STATUS;
-	std::string status;
 	m_items.clear();
-	exec(m_root, m_git + L" status --branch --porcelain", [&status](const char * data, DWORD size) { status.append(data, size); });
-	std::wstring wstatus = utf8_to_wstr(status);
-	std::vector<std::wstring> files;
-	split(wstatus, files);
-	SetWindowText(m_mainWindow, files[0].c_str());
-	for (size_t i = 1; i < files.size(); ++i) {
-		std::wstring status = files[i].substr(0, 3);
-		std::wstring name = files[i].substr(3);
-		m_items.emplace_back(Item({name, status}));
+
+	switch (GetCurrentMode()) {
+		case STATUS:   GitStatus();   break;
+		case BRANCH:   GitBranch();   break;
+		case LOG:      GitLog();      break;
+		case DIFFTREE: GitDiffTree(); break;
 	}
+
 	if (currentItem >= m_items.size()) {
 		currentItem = (int) (m_items.size() - 1);
 	}
@@ -787,26 +825,38 @@ void Application::GitStatus() {
 	InvalidateRect(m_mainWindow, NULL, FALSE);
 }
 
-void Application::GitBranch() {
-	m_mode = BRANCH;
-	std::string status;
-	m_items.clear();
-	std::wstring cmd = m_git + L" for-each-ref --format=\"%(HEAD)%(refname:lstrip=-1) %(objectname:short) %(authordate:iso) %(authoremail) %(subject)\" refs/heads";
-	exec(m_root, cmd, [&status](const char * data, DWORD size) { status.append(data, size); });
+void Application::GitStatus() {
+	m_formatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[1] + item[0];
+	};
 
-	std::wstring wstatus = utf8_to_wstr(status);
-	std::vector<std::wstring> files;
-	split(wstatus, files);
-	//SetWindowText(m_mainWindow, files[0].c_str());
+	const std::wstring cmd = m_git + L" status --branch --porcelain";
+	const std::vector<std::wstring> files = exec(m_root, cmd);
+	SetWindowText(m_mainWindow, (std::wstring(L"git status (") + files[0].c_str() + L")").c_str());
+	for (size_t i = 1; i < files.size(); ++i) {
+		std::wstring status = files[i].substr(0, 3);
+		std::wstring name = files[i].substr(3);
+		m_items.emplace_back(Item({name, status}));
+	}
+}
+
+void Application::GitBranch() {
+	m_formatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[1] + format(item[0], 25) + L" " + item[2].substr(0, 7) + L" " + item[3] + L" " + item[4] + L" " + item[5] + L" " + item[6];
+	};
+
+	const std::wstring cmd = m_git + L" for-each-ref --format=\"%(HEAD)%(refname:lstrip=-1) %(objectname) %(authordate:iso) %(authoremail) %(subject)\" refs/heads";
+	const std::vector<std::wstring> files = exec(m_root, cmd);
+	SetWindowText(m_mainWindow, L"Branch");
 	for (size_t i = 0; i < files.size(); ++i) {
 		// "*name hash 2020-07-28 23:24:14 +0200 <name@mail.com> description"
-		const int nameIdx = 1;
-		const int hashIdx = files[i].find(L' ', nameIdx) + 1;
-		const int dateIdx = files[i].find(L' ', hashIdx) + 1;
-		const int timeIdx = files[i].find(L' ', dateIdx) + 1;
-		const int zoneIdx = files[i].find(L' ', timeIdx) + 1;
-		const int mailIdx = files[i].find(L' ', zoneIdx) + 1;
-		const int descIdx = files[i].find(L' ', mailIdx) + 1;
+		const size_t nameIdx = 1;
+		const size_t hashIdx = files[i].find(L' ', nameIdx) + 1;
+		const size_t dateIdx = files[i].find(L' ', hashIdx) + 1;
+		const size_t timeIdx = files[i].find(L' ', dateIdx) + 1;
+		const size_t zoneIdx = files[i].find(L' ', timeIdx) + 1;
+		const size_t mailIdx = files[i].find(L' ', zoneIdx) + 1;
+		const size_t descIdx = files[i].find(L' ', mailIdx) + 1;
 		std::wstring head{files[i][0]};
 		std::wstring name = files[i].substr(nameIdx, hashIdx - nameIdx - 1);
 		std::wstring hash = files[i].substr(hashIdx, dateIdx - hashIdx - 1);
@@ -816,9 +866,45 @@ void Application::GitBranch() {
 		std::wstring desc = files[i].substr(descIdx);
 		m_items.emplace_back(Item({name, head, hash, date, time, mail, desc}));
 	}
-	if (currentItem >= m_items.size()) {
-		currentItem = (int) (m_items.size() - 1);
+}
+
+void Application::GitLog() {
+	m_formatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[0].substr(0, 7) + L" " + format(item[1], 30) + L" " + item[2] + L" " + item[3] + L" " + item[4];
+	};
+
+	const std::wstring cmd = m_git + L" log  --max-count=20 --first-parent --pretty=format:\"%H %ai %aE %s\" " + GetCurrentView().rev + (GetCurrentView().path.empty() ? L"" : (L" -- " + GetCurrentView().path));
+	const std::vector<std::wstring> files = exec(m_root, cmd);
+	//SetWindowText(m_mainWindow, (std::wstring(L"log ") + GetCurrentView().rev + (GetCurrentView().path.empty() ? L"" : (L" -- " + GetCurrentView().path))).c_str());
+	SetWindowText(m_mainWindow, GetCurrentView().desc.c_str());
+	for (size_t i = 0; i < files.size(); ++i) {
+		const size_t hashIdx = 0;
+		const size_t dateIdx = files[i].find(L' ', hashIdx) + 1;
+		const size_t timeIdx = files[i].find(L' ', dateIdx) + 1;
+		const size_t zoneIdx = files[i].find(L' ', timeIdx) + 1;
+		const size_t mailIdx = files[i].find(L' ', zoneIdx) + 1;
+		const size_t descIdx = files[i].find(L' ', mailIdx) + 1;
+		std::wstring hash = files[i].substr(hashIdx, dateIdx - hashIdx - 1);
+		std::wstring date = files[i].substr(dateIdx, timeIdx - dateIdx - 1);
+		std::wstring time = files[i].substr(timeIdx, zoneIdx - timeIdx - 1);
+		std::wstring mail = files[i].substr(mailIdx, descIdx - mailIdx - 1);
+		std::wstring desc = files[i].substr(descIdx);
+		m_items.emplace_back(Item({hash, mail, date, time, desc}));
 	}
-	UpdateFilter();
-	InvalidateRect(m_mainWindow, NULL, FALSE);
+}
+
+void Application::GitDiffTree() {
+	m_formatter = [](const std::vector<std::wstring> & item) -> std::wstring {
+		return item[1] + L" " + item[0];
+	};
+
+	const std::wstring cmd = m_git + L" diff-tree -M --no-commit-id --name-status -r " + GetCurrentView().rev + (GetCurrentView().path.empty() ? L"" : GetCurrentView().path);
+	const std::vector<std::wstring> files = exec(m_root, cmd);
+	//SetWindowText(m_mainWindow, (std::wstring(L"difftree ") + GetCurrentView().rev + (GetCurrentView().path.empty() ? L"" : GetCurrentView().path)).c_str());
+	SetWindowText(m_mainWindow, GetCurrentView().desc.c_str());
+	for (size_t i = 0; i < files.size(); ++i) {
+		std::wstring status = files[i].substr(0, 1);
+		std::wstring name = files[i].substr(2);
+		m_items.emplace_back(Item({name, status}));
+	}
 }

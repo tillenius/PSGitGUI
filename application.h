@@ -18,12 +18,15 @@ public:
     void Refresh();
     void GitStatus();
     void GitBranch();
+    void GitLog();
+    void GitDiffTree();
 
     void OnCreate(HWND hwnd);
     void OnPaint(HWND hwnd);
     void OnSize(HWND hwnd);
     void OnChar(WPARAM wparam);
     void OnKeyDown(HWND hwnd, WPARAM wparam);
+    void OnSysKeyDown(HWND hwnd, WPARAM wparam);
     void paint(Gdiplus::Graphics & graphics);
     void layout(const Gdiplus::RectF & rect);
     void SendToTerminal(const std::wstring & str);
@@ -57,8 +60,55 @@ public:
     std::wstring m_message;
     enum mode_t {
         STATUS,
-        BRANCH
-    } m_mode = STATUS;
+        BRANCH,
+        LOG,
+        DIFFTREE
+    };
+
+    struct view_t {
+        mode_t mode;
+        int currentItem = 0;
+        std::wstring rev;
+        std::wstring path;
+        std::wstring desc;
+    };
+
+    std::function<std::wstring(const std::vector<std::wstring> & item)> m_formatter;
+
+    const view_t & GetCurrentView() {
+        return m_viewStack[m_currentView];
+    }
+
+    mode_t GetCurrentMode() {
+        return GetCurrentView().mode;
+    }
+    void PushView(const view_t & view) {
+        m_viewStack[m_currentView].currentItem = currentItem;
+        ++m_currentView;
+        m_viewStack.resize(m_currentView);
+        m_viewStack.push_back(view);
+        m_viewStack.back().currentItem = currentItem;
+        Refresh();
+    }
+    void PrevView() {
+        if (m_currentView == 0) {
+            return;
+        }
+        --m_currentView;
+        currentItem = GetCurrentView().currentItem;
+        Refresh();
+    }
+    void NextView() {
+        if (m_currentView + 1 < m_viewStack.size()) {
+            ++m_currentView;
+            currentItem = GetCurrentView().currentItem;
+        }
+        Refresh();
+    }
+
+    //view_t m_currentView = ;
+    int m_currentView = 0;
+    std::vector< view_t > m_viewStack = {{STATUS, 0, L"", L"", L""}};
 };
 
 extern Application g_app;
